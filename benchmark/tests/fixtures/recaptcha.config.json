@@ -1,0 +1,10 @@
+{
+	"directory": "coverage/recaptcha-fixtures",
+	"index": "index.json",
+	"route": "**/__coverage/recaptcha/*.html",
+	"urlPrefix": "/__coverage/recaptcha/",
+	"submitSelector": "#captcha-form button",
+	"token": "coverage-success-token",
+	"variants": ["checkbox", "invisible", "v3"],
+	"scriptPolicy": "default-src 'self'; script-src 'self' 'nonce-coverage-recaptcha-fixture'; object-src 'none'"
+}

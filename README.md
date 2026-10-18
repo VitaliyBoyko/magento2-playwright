@@ -123,3 +123,9 @@ Version 7.0.0 brings major breaking changes to the testing suite compared to ver
 | `AdminLogin` changed from default → named export | `import { AdminLogin } from ...` |
 | Coupon codes moved from `MAGENTO_COUPON_CODE_*` `env` vars → `coupon.codes` map in `input-values.json` | These three `.env` vars are no longer in the suite.
 | `tests/config/index.ts` deep-merge bug fixed (both layer paths derived from `__dirname`, collapsing to one dir) | Stores that copied this file silently lost every base default — effective config values change on upgrade. |
+
+## Local MageLens benchmark
+
+The [Hyvä storefront benchmark](benchmark/README.md) keeps local scenarios and
+visual baselines in `benchmark/tests/`. In that setup MageLens supplies the
+runner and coverage; this repository supplies tests only.
