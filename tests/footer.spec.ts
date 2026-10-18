@@ -15,13 +15,7 @@ test.describe('Footer', () => {
 		await footer.goToFooterElement();
 	});
 
-	/**
-	 * May 27th, 2026 - this test is set to fixme:
-	 * Caching issues on the demo website causes issues for the currency switching fuctionality.
-	 * This means this test fails and causes the entire suite to fail.
-	 * Unset 'fixme' when caching issue has been resolved.
-	 */
-	test.fixme('Footer_switch_currency', { tag: ['@footer', '@cold'] }, async ({ page }) => {
+	test('Footer_switch_currency', { tag: ['@footer', '@cold'] }, async ({ page }) => {
 		const footer = new Footer(page);
 		await footer.goToFooterElement();
 		await footer.switchCurrency();

@@ -2,6 +2,7 @@
 
 import { expect, type Locator, type Page } from '@playwright/test';
 import { UIReference, outcomeMarker, slugs } from '@config';
+import { SearchPage } from '@poms/frontend/search.page';
 import { requireEnv } from '@utils/env.utils';
 import { slugToRegex } from '@utils/url.utils';
 
@@ -293,27 +294,19 @@ export class MainMenuPage {
 	 * @param searchTerm
 	 */
 	async searchForProduct(searchTerm: string) {
-		const searchField = this.page.getByRole('searchbox', {
-			name: UIReference.text.frontend.search.placeholder,
-		});
-		await this.page.goto(requireEnv('PLAYWRIGHT_BASE_URL'), { waitUntil: 'load' });
-		await this.mainMenuAccountButton.waitFor();
-
-		await this.mainMenuSearchButton.click();
-		await expect(searchField, 'Search field is visible').toBeVisible();
-		await searchField.fill(searchTerm);
-		await expect(
-			this.page.getByText(UIReference.text.frontend.search.termsDropdown, { exact: true }),
-			'Dropdown with results is visible',
-		).toBeVisible();
-		await searchField.press('Enter');
-
-		await this.page.waitForURL(new RegExp(`[?&]q=${searchTerm}`));
+		await this.page.goto('/');
+		await new SearchPage(this.page).search(searchTerm);
+		expect(new URL(this.page.url()).searchParams.get('q')).toBe(searchTerm);
 		await expect(
 			this.page.getByRole('heading', {
-				name: `${UIReference.text.frontend.search.resultsTitle} \'${searchTerm}\'`,
+				name: `${UIReference.text.frontend.search.resultsTitle} '${searchTerm}'`,
 			}),
-			`Title contains search term: "${searchTerm}"`,
+		).toBeVisible();
+		await expect(
+			this.page
+				.locator(UIReference.selectors.frontend.category.productGrid)
+				.locator('li')
+				.first(),
 		).toBeVisible();
 	}
 

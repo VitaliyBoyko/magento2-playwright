@@ -8,12 +8,11 @@
  * This file also checks the HTTP authentication headers are sent.
  */
 
-import { test, expect, type Page, type Response } from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
+import type { Page, Response } from '@playwright/test';
+import { guestTest as test, expect } from '@utils/fixtures.utils';
 
-import { requireEnv, getHttpCredentials, isBasicAuthChallenge } from '@utils/env.utils';
-import { UIReference, slugs, toggles } from '@config';
+import { requireEnv, isBasicAuthChallenge } from '@utils/env.utils';
+import { UIReference, slugs } from '@config';
 
 /**
  * Waits for the response to `url`, skipping the HTTP Basic Auth challenge that
@@ -28,58 +27,14 @@ function waitForPageResponse(page: Page, url: string): Promise<Response> {
 	);
 }
 
-function regressionSnapshotName(label: string, browser: string, extension: 'png' | 'yml'): string {
-	const now = new Date();
-	const day = String(now.getDate()).padStart(2, '0');
-	const month = String(now.getMonth() + 1).padStart(2, '0');
-	const date = `${day}${month}${now.getFullYear()}`;
-	return `production_${label}_${date}_${browser}.${extension}`;
-}
-
-/**
- * Test: Validate HTTP authentication configuration and site access.
- * Skipped when HTTP_AUTH_USERNAME and HTTP_AUTH_PASSWORD are not set.
- * Reports whether the site requires authentication and whether credentials work.
- * @param page - Playwright page instance used for interacting with the website.
- * @param playwright - Playwright instance we can use to create a browser without HTTP authentication
- */
-test('HTTP_auth_headers_are_sent', async ({ page, playwright }) => {
-	const httpAuth = getHttpCredentials();
-	test.skip(!httpAuth, 'HTTP_AUTH_USERNAME and HTTP_AUTH_PASSWORD are not set.');
-
-	// 1. Verify httpAuth contains both a username and password.
-	expect(httpAuth!.username, 'HTTP_AUTH_USERNAME should not be empty').toBeTruthy();
-	expect(httpAuth!.password, 'HTTP_AUTH_PASSWORD should not be empty').toBeTruthy();
-
-	// 2. Determine if the site actually requires authentication
-	//    by making an unauthenticated request (without credentials).
-	const unauthContext = await playwright.request.newContext();
-	const unauthResponse = await unauthContext.head(requireEnv('PLAYWRIGHT_BASE_URL'));
-	await unauthContext.dispose();
-	const siteRequiresAuth = unauthResponse.status() === 401;
-
-	if (!siteRequiresAuth) {
-		// 3. Site does not require auth — report status.
-		test.info().annotations.push({
-			type: 'HTTP Auth',
-			description: `Site does not require authentication (status ${unauthResponse.status()}). httpAuth is set with username "${httpAuth!.username}".`,
-		});
-		return;
-	}
-
-	// 4. Site requires auth — verify we can visit the page with the provided credentials.
+// This local storefront is intentionally accessible without HTTP Basic Auth.
+test('Local_storefront_is_accessible_without_HTTP_auth', async ({ page }) => {
 	const response = await page.goto('/');
-	expect(response, 'Navigation should return a response').not.toBeNull();
-	expect(
-		response!.ok(),
-		`Authenticated request should succeed but got ${response!.status()}`,
-	).toBeTruthy();
-
-	test.info().annotations.push({
-		type: 'HTTP Auth',
-		description:
-			'Site requires authentication — successfully accessed with provided credentials.',
-	});
+	expect(response?.status()).toBe(200);
+	expect(response?.headers()['www-authenticate']).toBeUndefined();
+	await expect(
+		page.getByRole('heading', { level: 1, name: UIReference.text.frontend.home.title }),
+	).toBeVisible();
 });
 
 /**
@@ -173,77 +128,26 @@ test.describe('Smoke tests for critical pages', () => {
 	});
 });
 
-/**
- * Test Group: Visual regression tests
- *
- * For each listed page, the production site is captured fresh on every run,
- * written to tests/utils/snapshots/ as production_<page>_<DDMMYYYY>_<browser>.png,
- * and used as the baseline that the base URL is compared against.
- */
+// Compare with committed local baselines; normal runs never rewrite these files.
 test.describe('Visual Regression Tests', () => {
-	test.skip(toggles.visualRegression === false, 'Disabled by test toggle: visualRegression');
-
-	// Pin the viewport and DPR so screenshots are byte-comparable regardless of
-	// the project's device profile. Desktop Safari defaults deviceScaleFactor
-	// to 2, which would otherwise produce a 2560×1440 bitmap on webkit while
-	// chromium/firefox produce 1280×720.
-	test.use({
-		viewport: { width: 1280, height: 720 },
-		deviceScaleFactor: 1,
-	});
-
-	// Per-page mask selectors hide elements that legitimately differ between
-	// production and the base URL (e.g. images served at different sizes by a
-	// CDN). Selectors apply to BOTH the production capture and the base URL
-	// comparison, so any element matched is painted over on both sides.
-	const visualRegressionPages: { label: string; slug: string; maskSelectors?: string[] }[] = [
+	test.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+	for (const { label, slug } of [
 		{ label: 'homepage', slug: '/' },
-		{
-			label: 'plp',
-			slug: slugs.frontend.category.index,
-			maskSelectors: ['.product-item-photo'],
-		},
+		{ label: 'plp', slug: slugs.frontend.category.index },
 		{ label: 'pdp', slug: slugs.frontend.product.simple },
 		{ label: 'cart', slug: slugs.frontend.cart.index },
-	];
-
-	for (const { label, slug, maskSelectors } of visualRegressionPages) {
-		/**
-		 * Test: Compare the base URL page against a freshly captured production baseline.
-		 * @param page - Playwright page instance used for interacting with the website.
-		 * @param testInfo - Test metadata, used to resolve artifact and snapshot paths.
-		 */
+	]) {
 		test(
 			`${label}_matches_visual_baseline`,
 			{ tag: ['@smoke', '@visual', '@cold'] },
-			async ({ page }, testInfo) => {
-				const snapshotName = regressionSnapshotName(label, testInfo.project.name, 'png');
-				const masks = (maskSelectors ?? []).map((selector) => page.locator(selector));
-
-				// 1. Navigate to the slug on the production URL.
-				const productionUrl = new URL(
-					slug,
-					requireEnv('PLAYWRIGHT_PRODUCTION_URL'),
-				).toString();
-				await page.goto(productionUrl);
-				await page.waitForLoadState('load');
-				// TODO: add an element.waitFor(); here so we can confirm the page is done loading.
-
-				// 2. Capture production and write it to the snapshot path that step 4's
-				//    assertion reads. One file per page/browser/day — re-running on the
-				//    same day overwrites it with the latest production state.
-				const productionBuffer = await page.screenshot({ mask: masks });
-				const baselinePath = testInfo.snapshotPath(snapshotName);
-				fs.mkdirSync(path.dirname(baselinePath), { recursive: true });
-				fs.writeFileSync(baselinePath, productionBuffer);
-
-				// 3. Navigate to the same slug on the base URL.
+			async ({ page }) => {
 				await page.goto(slug);
-				await page.waitForLoadState('load');
-				// TODO: add an element.waitFor(); here so we can confirm the page is done loading.
-
-				// 4. Compare the base URL page against the production baseline from step 2.
-				await expect(page).toHaveScreenshot(snapshotName, { mask: masks });
+				await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+				await page.waitForLoadState('networkidle');
+				await expect(page).toHaveScreenshot(`${label}.png`, {
+					fullPage: true,
+					animations: 'disabled',
+				});
 			},
 		);
 	}

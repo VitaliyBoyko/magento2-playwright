@@ -39,6 +39,12 @@ export class MiniCartPage {
 	async goToCheckout() {
 		await this.toCheckoutButton.click();
 		await expect(this.page).toHaveURL(slugToRegex(slugs.frontend.checkout.index));
+		await expect(
+			this.page.getByRole('button', {
+				name: UIReference.standardCheckout.next,
+				exact: true,
+			}),
+		).toBeVisible({ timeout: 60000 });
 	}
 
 	async goToCart() {

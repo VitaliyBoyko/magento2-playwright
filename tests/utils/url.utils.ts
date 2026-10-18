@@ -18,7 +18,7 @@ export function slugToRegex(slug: string, appendDollarSign: boolean = false): Re
  * @returns boolean: true if localhost, false if not.
  */
 export function isLocalhost(slug: string): boolean {
-	if (slug.includes('localhost')) {
+	if (slug.includes('localhost') || new URL(slug).hostname === 'hyva-coverage.127.0.0.1.nip.io') {
 		return true;
 	}
 

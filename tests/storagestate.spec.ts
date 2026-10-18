@@ -9,7 +9,7 @@
  *               launched and the file costs milliseconds per project.
  */
 
-import { test, expect } from '@playwright/test';
+import { guestTest as test, expect } from '@utils/fixtures.utils';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

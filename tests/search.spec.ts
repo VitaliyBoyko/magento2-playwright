@@ -6,7 +6,7 @@ import { slugToRegex } from '@utils/url.utils';
 
 import { SearchPage } from '@poms/frontend/search.page';
 
-test.describe('Search functionality - needs to be adapted to OpenSearch', () => {
+test.describe('OpenSearch storefront search', () => {
 	test('Search_query_returns_multiple_results', async ({ page }) => {
 		await page.goto('');
 		const searchPage = new SearchPage(page);
@@ -17,20 +17,26 @@ test.describe('Search functionality - needs to be adapted to OpenSearch', () => 
 		expect(resultCount).toBeGreaterThan(1);
 	});
 
-	/**
-	 * Test: User_can_find_a_specific_product_and_navigate_to_its_page
-	 * @param page { page } - used by playwright to interact with website
-	 *
-	 * NOTE: THIS TEST IS CURRENTLY SET TO FIXME.
-	 * This is because these tests were written for elasticSearch,
-	 * but the demo site now uses openSearch
-	 */
-	test.fixme('User_can_find_a_specific_product_and_navigate_to_its_page', async ({ page }) => {
+	test('User_can_find_a_specific_product_and_navigate_to_its_page', async ({ page }) => {
 		await page.goto('');
 		const searchPage = new SearchPage(page);
 		await searchPage.search(inputValues.search.querySpecificProduct);
 
-		expect(page.url()).toEqual(expect.stringContaining(`${slugs.frontend.product.simple}`));
+		await page
+			.locator(UIReference.selectors.frontend.category.productGrid)
+			.getByRole('link', {
+				name: UIReference.text.frontend.product.simpleProduct,
+				exact: true,
+			})
+			.filter({ hasText: UIReference.text.frontend.product.simpleProduct })
+			.click();
+		await expect(page).toHaveURL(slugToRegex(slugs.frontend.product.simple));
+		await expect(
+			page.getByRole('heading', {
+				level: 1,
+				name: UIReference.text.frontend.product.simpleProduct,
+			}),
+		).toBeVisible();
 	});
 
 	test('No_results_message_is_shown_for_unknown_query', async ({ page }) => {

@@ -5,8 +5,8 @@ import config from '@fixtures/recaptcha.config.json';
 
 declare global {
 	interface Window {
-		runRecaptchaBenchmark: (token: string) => void;
-		recaptchaBenchmark: {
+		runRecaptchaScenario: (token: string) => void;
+		recaptchaScenario: {
 			errors: number;
 			hasCaptchaToken: number | boolean;
 			completed: number;
@@ -38,12 +38,12 @@ export class RecaptchaPage {
 
 	async validate(valid: boolean) {
 		await this.page.evaluate(
-			(token) => window.runRecaptchaBenchmark(token),
+			(token) => window.runRecaptchaScenario(token),
 			valid ? config.token : '',
 		);
 	}
 
 	async state() {
-		return this.page.evaluate(() => window.recaptchaBenchmark);
+		return this.page.evaluate(() => window.recaptchaScenario);
 	}
 }

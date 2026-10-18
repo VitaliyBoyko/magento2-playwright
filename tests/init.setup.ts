@@ -9,7 +9,7 @@
  *               projects in playwright.config.ts).
  */
 
-import { test, expect } from '@playwright/test';
+import { guestTest as test, expect } from '@utils/fixtures.utils';
 
 import { requireEnv } from '@utils/env.utils';
 import ApiClient from '@utils/apiClient.utils';
@@ -43,72 +43,11 @@ test.beforeAll(`Initialize API Client`, async () => {
  *
  * @param page - Playwright Page instance (fixture)
  */
-test('Disable_login_captcha_and_enable_multiple_login', async ({ page }) => {
-	// Pop-up definitions. Each entry maps a trigger locator to its dismiss button.
-	// ElasticSuite Telemetry, ElasticSuite Newsletters, Adobe Data Collection, Magento Incoming Message
-	const popUpDismissals = [
-		{
-			locator: page.getByText(UIReference.text.admin.configuration.adobeDataCollection),
-			button: page.getByRole('button', {
-				name: UIReference.text.admin.configuration.declineDontAllow,
-			}),
-		},
-		{
-			locator: page.getByText(UIReference.text.admin.configuration.elasticSuiteNewsletter),
-			button: page.getByRole('button', {
-				name: UIReference.text.admin.configuration.declineNoThanks,
-			}),
-		},
-		{
-			locator: page.getByText(UIReference.text.admin.configuration.elasticSuiteTelemetry),
-			button: page.getByRole('button', { name: UIReference.text.admin.common.ok }),
-		},
-		{
-			locator: page.getByRole('heading', {
-				name: UIReference.text.admin.configuration.magentoIncomingMessage,
-			}),
-			button: page
-				.locator(UIReference.selectors.admin.common.modalHeader)
-				.getByRole('button'),
-		},
-	];
-
-	// Dismiss all visible pop-ups using dispatchEvent to bypass actionability checks.
-	// This avoids getting stuck when one pop-up overlaps another's dismiss button.
-	const dismissAllVisiblePopUps = async () => {
-		for (const { locator, button } of popUpDismissals) {
-			if (await locator.isVisible()) {
-				await button.dispatchEvent('click');
-			}
-		}
-	};
-
-	for (const { locator } of popUpDismissals) {
-		await page.addLocatorHandler(locator, dismissAllVisiblePopUps);
-	}
-
-	const adminLoginPage = new AdminLogin(page);
-
-	await test.step(`Step: Login to admin environment`, async () => {
-		await adminLoginPage.loginAdmin(magentoAdminUsername, magentoAdminPassword);
-	});
-
-	await test.step(`Step: Disable login CAPTCHA`, async () => {
-		await adminLoginPage.navigateToStoreSettings();
-		await adminLoginPage.disableReCAPTCHA();
-		await adminLoginPage.disableLoginCaptcha();
-	});
-
-	await test.step(`Step: Enable multiple admin login`, async () => {
-		await expect(async () => {
-			await expect(
-				page.getByRole('link', { name: 'Customer Configuration' }),
-				`"Customer Configuration" under General section is visible.`,
-			).toBeVisible();
-		}).toPass();
-
-		await adminLoginPage.enableMultipleAdminLogins();
-	});
+// bin/setup-storefront configures CAPTCHA and shared admin sessions through Magento CLI.
+// Avoid the unrelated payment-provider system-configuration page in storefront setup.
+test('Local_admin_login_is_available', async ({ page }) => {
+	await new AdminLogin(page).loginAdmin(magentoAdminUsername, magentoAdminPassword);
+	await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
 });
 
 /**

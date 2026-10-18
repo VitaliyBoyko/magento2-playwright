@@ -207,35 +207,16 @@ export class CartPage {
 	 * @param productName {string} - name of the product to retrieve values for.
 	 */
 	async getCheckoutValues(productName: string) {
-		// Ensure the cart details are visible in the checkout
-		const checkoutCartDetails = this.page.locator(
-			UIReference.selectors.frontend.checkout.cartDetailsContainer,
-		);
-		const openCartDetailsButton = this.page.locator(
-			UIReference.selectors.frontend.checkout.openCartDetails,
-		);
-
-		if (await checkoutCartDetails.isHidden()) {
-			await openCartDetailsButton.click();
-		}
-
-		// Get product details section in checkout and retrieve values
-		const productInCheckout = this.page
-			.locator(UIReference.selectors.frontend.checkout.cartDetails)
-			.filter({ hasText: productName })
-			.nth(1);
-		const productPriceInCheckout = (
-			await productInCheckout
-				.getByText(UIReference.text.frontend.common.priceSymbol)
-				.last()
-				.innerText()
-		).trim();
-		const productQuantityInCheckout = (
-			await productInCheckout.locator('.product-price').getByText('x').innerText()
-		).substring(0, 1);
-
-		// Return price and quantity values
-		return [productPriceInCheckout, productQuantityInCheckout];
+		const ui = UIReference.standardCheckout;
+		const summary = this.page.locator(ui.cartSummary);
+		await expect(summary).toBeVisible({ timeout: 60000 });
+		const product = summary.locator(ui.cartItem).filter({ hasText: productName });
+		if (!(await product.isVisible())) await summary.locator(ui.cartToggle).click();
+		await expect(product).toBeVisible();
+		return [
+			(await product.locator(ui.cartItemPrice).innerText()).trim(),
+			(await product.locator(ui.cartItemQuantity).innerText()).trim(),
+		];
 	}
 
 	/**

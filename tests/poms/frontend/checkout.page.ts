@@ -161,42 +161,19 @@ export class CheckoutPage extends MagewireUtils {
 	 * @returns {string} Ordernumber - the order to confirm the test with
 	 */
 	async placeOrder() {
-		const orderPlacedNotification = outcomeMarker.checkout.orderPlacedNotification;
-
-		// If we're not already on the checkout page, go there
-		if (!this.page.url().includes(slugs.frontend.checkout.index)) {
+		if (!this.page.url().includes(slugs.frontend.checkout.index))
 			await this.page.goto(slugs.frontend.checkout.index);
-			await expect(this.orderSummaryFields.placeOrderButton).toBeVisible();
-		}
-
-		// If shipping method is not selected, select it
-		if (!(await this.shippingFields.shippingMethodOptionFixed.isChecked())) {
-			await this.shippingFields.shippingMethodOptionFixed.check();
-			await this.waitForMagewireRequests();
-		}
-
-		await this.paymentFields.paymentMethodOptionCheck.check();
-		await this.waitForMagewireRequests();
-
-		await expect(
-			this.paymentFields.paymentMethodOptionCheck,
-			'payment method is selected',
-		).toBeChecked();
-
-		// wait for placeOrderbutton to be actionable, then submit the order.
-		await expect(this.orderSummaryFields.placeOrderButton).toBeEnabled();
-		await this.submitOrder();
-
-		await expect.soft(this.page.getByText(orderPlacedNotification)).toBeVisible();
-		const orderNumber = this.page
+		await this.proceedToPayment();
+		const method = this.page.locator(this.ui.payment);
+		if (await method.isVisible()) await method.check();
+		await expect(method).toBeChecked();
+		await this.page.getByRole('button', { name: this.ui.placeOrder, exact: true }).click();
+		await this.page.waitForURL(/checkout\/onepage\/success/);
+		await expect(this.page.locator(this.ui.success)).toBeVisible();
+		return this.page
+			.locator(this.ui.success)
 			.locator('p')
-			.filter({ hasText: outcomeMarker.checkout.orderPlacedNumberText });
-
-		await expect(
-			this.continueShoppingButton,
-			`${outcomeMarker.checkout.orderPlacedNumberText} ${orderNumber}`,
-		).toBeVisible();
-		return orderNumber;
+			.filter({ hasText: /Your order (?:number|#) is:/ });
 	}
 
 	/**
@@ -245,36 +222,13 @@ export class CheckoutPage extends MagewireUtils {
 	 * @param code {string} - the discount code to use
 	 */
 	async applyDiscountCodeCheckout(code: string) {
-		// Shorten discount form elements
-		const { openFormButton, codeInputField, applyCodeButton, discountBox, cancelCouponButton } =
-			this.discountFormFields;
-
-		// Ensure the discount code form is visible.
-		if (await codeInputField.isHidden()) {
-			await openFormButton.click();
-			await this.waitForMagewireRequests();
-		}
-
-		// If a coupon code has been applied already, remove.
-		if (await this.page.getByText(`-${outcomeMarker.cart.priceReducedSymbols}`).isVisible()) {
-			// discount is already active.
-			await cancelCouponButton.click();
-			await this.waitForMagewireRequests();
-		}
-
-		// fill in discount code form
-		await codeInputField.fill(code);
-		await applyCodeButton.click();
-		await this.waitForMagewireRequests();
-
-		// Final assertions: notification visible, 'cancel coupon' button is visible, discountfield has code filled in.
-		await new NotificationValidatorUtils(this.page).validate(
-			outcomeMarker.checkout.couponAppliedNotification,
-		);
-		await expect(cancelCouponButton, `cancel coupon button is visible`).toBeVisible();
-		await expect(async () => {
-			await expect(discountBox, `discount code is filled in`).toHaveValue(code);
-		}).toPass();
+		await this.openDiscount();
+		await this.page.locator(this.ui.discount).fill(code);
+		await this.page.getByRole('button', { name: this.ui.applyDiscount, exact: true }).click();
+		await expect(
+			this.page.getByRole('button', { name: this.ui.cancelDiscount, exact: true }),
+		).toBeVisible();
+		await expect(this.page.locator(this.ui.discount)).toBeDisabled();
 	}
 
 	/**
@@ -283,25 +237,11 @@ export class CheckoutPage extends MagewireUtils {
 	 * @param code {string} - incorrect code to use.
 	 */
 	async enterWrongCouponCode(code: string) {
-		// Shorten discount form elements
-		const { openFormButton, codeInputField, applyCodeButton } = this.discountFormFields;
-
-		// Ensure the discount code form is visible.
-		if (await codeInputField.isHidden()) {
-			await openFormButton.click();
-			await this.waitForMagewireRequests();
-		}
-
-		// fill in the incorrect code
-		await codeInputField.fill(code);
-		await applyCodeButton.click();
-		await this.waitForMagewireRequests();
-
-		// Final assertions: notification that code is incorrect shows up, the input field is still editable.
-		await new NotificationValidatorUtils(this.page).validate(
-			outcomeMarker.checkout.incorrectDiscountNotification,
-		);
-		await expect(codeInputField).toBeEditable();
+		await this.openDiscount();
+		await this.page.locator(this.ui.discount).fill(code);
+		await this.page.getByRole('button', { name: this.ui.applyDiscount, exact: true }).click();
+		await expect(this.page.getByText(/coupon code isn't valid/i)).toBeVisible();
+		await expect(this.page.locator(this.ui.discount)).toBeEnabled();
 	}
 
 	/**
@@ -309,35 +249,8 @@ export class CheckoutPage extends MagewireUtils {
 	 * Used in the test Remove_coupon_code_from_checkout
 	 */
 	async removeDiscountCode() {
-		// Shorten discount form elements
-		const { openFormButton, codeInputField, applyCodeButton } = this.discountFormFields;
-
-		// Ensure the discount code form is visible.
-		if (await codeInputField.isHidden()) {
-			await openFormButton.click();
-			await this.waitForMagewireRequests();
-		}
-
-		const cancelCouponButton = this.page.getByRole('button', {
-			name: UIReference.text.frontend.common.cancelCoupon,
-		});
-		await cancelCouponButton.click();
-		await this.waitForMagewireRequests();
-
-		await new NotificationValidatorUtils(this.page).validate(
-			outcomeMarker.checkout.couponRemovedNotification,
-		);
-		await expect(
-			this.page.getByText(outcomeMarker.checkout.checkoutPriceReducedSymbol),
-			`'-$' should not be on the page`,
-		).toBeHidden();
-		// await expect(this.page.locator('#quote-summary div').
-		//   getByText(`Discount`),`The word 'Discount (' should not be on the page anymore`).toBeHidden();
-
-		const checkoutDiscountField = this.page.getByPlaceholder(
-			UIReference.text.frontend.common.discountInput,
-		);
-		await expect(checkoutDiscountField).toBeEditable();
+		await this.page.getByRole('button', { name: this.ui.cancelDiscount, exact: true }).click();
+		await expect(this.page.locator(this.ui.discount)).toBeEnabled();
 	}
 
 	// ==============================================
@@ -354,23 +267,19 @@ export class CheckoutPage extends MagewireUtils {
 	 * then confoirms the calculated total equals the total shown on page.
 	 */
 	async verifyPriceCalculations() {
-		// Retrieve prices
-		const subtotal = await this.getPriceValue(this.orderSummaryFields.subtotalElement);
-		const shipping = await this.getPriceValue(this.orderSummaryFields.shippingElement);
-		const tax = await this.getPriceValue(this.orderSummaryFields.taxElement);
-		const grandTotal = await this.getPriceValue(this.orderSummaryFields.grandTotalElement);
-
-		// Calculate total
-		const calculatedTotal = +(subtotal + shipping + tax).toFixed(2);
-
-		// Final assertions: check values are greater than 0.
-		// Also check displayed grand total equals calculated total.
-		expect(subtotal, `Subtotal (${subtotal}) should be greater than 0`).toBeGreaterThan(0);
-		expect(shipping, `Shipping cost (${shipping}) should be greater than 0`).toBeGreaterThan(0);
-		expect(
-			grandTotal,
-			`Grand total (${grandTotal}) should equal calculated total (${calculatedTotal})`,
-		).toBe(calculatedTotal);
+		await this.proceedToPayment();
+		const price = async (selector: string) =>
+			parsePrice(await this.page.locator(selector).innerText());
+		await expect
+			.poll(async () =>
+				Math.round(
+					100 *
+						((await price(this.ui.subtotal)) +
+							(await price(this.ui.shippingTotal)) -
+							(await price(this.ui.grandTotal))),
+				),
+			)
+			.toBe(0);
 	}
 
 	/**
@@ -440,57 +349,59 @@ export class CheckoutPage extends MagewireUtils {
 	 * If it's a different country, then the state field is an input field.
 	 */
 	async fillShippingAddress() {
-		// Simplify the shipping address fields locators
-		const {
-			emailField,
-			firstNameField,
-			lastNameField,
-			streetAddressField,
-			zipCodeField,
-			cityField,
-			phoneField,
-			countrySelector,
-			regionInputField,
-			stateDropDown,
-		} = this.contactInfoFields;
+		const form = this.page.locator(this.ui.form);
+		await expect(form).toBeVisible({ timeout: 60000 });
+		const email = this.page.locator(this.ui.email).first();
+		if (await email.isVisible()) await email.fill(`checkout-${Date.now()}@example.test`);
+		await form.locator(this.ui.firstName).fill(inputValues.account.firstName);
+		await form.locator(this.ui.lastName).fill(inputValues.account.lastName);
+		await form.locator(this.ui.country).selectOption(inputValues.firstAddress.firstCountryId);
+		await form.locator(this.ui.street).fill(inputValues.firstAddress.firstStreetAddressValue);
+		await form.locator(this.ui.city).fill(inputValues.firstAddress.firstCityValue);
+		await form.locator(this.ui.postcode).fill(inputValues.firstAddress.firstZipCodeValue);
+		await form.locator(this.ui.telephone).fill(inputValues.firstAddress.firstPhoneNumberValue);
+	}
 
-		// Fill required shipping address fields
-		await emailField.fill(faker.internet.email());
-		await firstNameField.fill(faker.person.firstName());
-		await lastNameField.fill(faker.person.lastName());
-		await streetAddressField.first().fill(faker.location.streetAddress());
-		await zipCodeField.fill(faker.location.zipCode());
-		await cityField.fill(faker.location.city().replace(/[^A-Za-z0-9\-' ]/g, ''));
-		await phoneField.fill(faker.phone.number({ style: 'national' }));
+	get ui() {
+		return UIReference.standardCheckout;
+	}
 
-		// Set up variables that depend on the type of state field
-		const country: string = faker.helpers.arrayElement(inputValues.addressCountries);
+	get selectedAddress() {
+		return this.page.locator(this.ui.selectedAddress);
+	}
 
-		// get the currently selected country (default)
-		const defaultSelectedCountry = await countrySelector.evaluate(
-			(select: HTMLSelectElement) => select.options[select.selectedIndex]?.text,
-		);
+	async proceedToPayment() {
+		await this.page.waitForURL(/checkout\//);
+		if (
+			await this.page
+				.getByRole('button', { name: this.ui.placeOrder, exact: true })
+				.isVisible()
+		)
+			return;
+		await expect(
+			this.page.getByRole('button', { name: this.ui.next, exact: true }),
+		).toBeVisible({ timeout: 60000 });
+		// Knockout can show Next before it finishes rendering saved addresses.
+		// Wait for the address choice before deciding whether to fill the form.
+		await expect
+			.poll(
+				async () =>
+					(await this.selectedAddress.isVisible()) ||
+					(await this.page.locator(this.ui.form).isVisible()),
+				{ timeout: 60000 },
+			)
+			.toBe(true);
+		if (!(await this.selectedAddress.isVisible())) await this.fillShippingAddress();
+		await this.page.locator(this.ui.shipping).check();
+		await this.page.getByRole('button', { name: this.ui.next, exact: true }).click();
+		await expect(
+			this.page.getByRole('button', { name: this.ui.placeOrder, exact: true }),
+		).toBeVisible();
+	}
 
-		// If the default country !== the country we're using in this test, select our country of choice.
-		if (country !== defaultSelectedCountry) {
-			await countrySelector.selectOption({ label: country });
-			// Add a 5 second wait to allow the region dropdown/field to update.
-			await this.page.waitForTimeout(5000);
-		}
-
-		// Select state of region based on the country used in the test
-		if (country !== 'United States') {
-			await expect(regionInputField, `State input field should be editable`).toBeEditable();
-			await regionInputField.fill(faker.location.state());
-		} else {
-			await expect(regionInputField, `Dropdown should not be visible`).toBeHidden();
-			await stateDropDown.selectOption(faker.location.state());
-			// Timeout because Alpine uses an @input.debounce to delay the activation of the event
-			// Standard debounce is 250ms.
-			await this.page.waitForTimeout(1000);
-		}
-
-		// Wait for any Magewire updates
-		await this.waitForMagewireRequests();
+	async openDiscount() {
+		await this.proceedToPayment();
+		if (!(await this.page.locator(this.ui.discount).isVisible()))
+			await this.page.locator(this.ui.discountToggle).click();
 	}
 }

@@ -2,7 +2,6 @@
 
 import { expect, type Locator, type Page } from '@playwright/test';
 import { UIReference, slugs } from '@config';
-import { slugToRegex, isLocalhost } from '@utils/url.utils';
 
 export class CategoryPage {
 	constructor(public readonly page: Page) {}
@@ -87,47 +86,33 @@ export class CategoryPage {
 	 * but locators can be updated to filter on different attribute.
 	 */
 	async filterOnAttribute() {
-		// declare 'this.categoryFilterItems' once to avoid having to use it everywhere.
-		const { attributeFilterButton, attributeOption, activeFilteringHeading } =
-			this.categoryFilterItems;
-
-		// Scroll to the attribute filter to trigger Alpine.js deferred initialization
-		await attributeFilterButton.scrollIntoViewIfNeeded();
-
-		// Check if the size filter is already opened, if not open it
-		await expect(async () => {
-			const isExpanded = await attributeFilterButton.getAttribute('aria-expanded');
-
-			if (isExpanded !== 'true') {
-				await attributeFilterButton.click();
-			}
-
-			await expect(attributeOption).toBeVisible();
-		}).toPass();
-
-		// Determine the expected size filter slug based on the environment
-		let expectedSizeFilterSlug: string;
-		isLocalhost(this.page.url())
-			? (expectedSizeFilterSlug = 'size=168')
-			: (expectedSizeFilterSlug = 'size=M');
-
-		await attributeOption.click();
-		await this.page.waitForURL(slugToRegex(expectedSizeFilterSlug));
-
-		// Verify the active filtering section and selected option are exposed accessibly.
-		await expect(
-			activeFilteringHeading,
-			'Active filtering heading should be visible',
-		).toBeVisible();
-		await expect(
-			attributeOption,
-			'Selected size filter should be visible',
-		).toHaveAccessibleName(
-			new RegExp(
-				`${UIReference.text.frontend.category.sizeM}.*${UIReference.text.frontend.category.filterSelected}`,
-				'i',
-			),
-		);
+		const region = this.categoryFilterItems.filterRegion;
+		// Hyva 1.5 uses native details/summary instead of an ARIA button.
+		const summary = region
+			.getByRole('heading', {
+				name: UIReference.text.frontend.category.sizeFilter,
+				exact: true,
+			})
+			.locator('..');
+		const option = region.getByRole('link', {
+			name: UIReference.text.frontend.category.sizeM,
+			exact: true,
+		});
+		if (!(await option.isVisible())) await summary.click();
+		const target = new URL((await option.getAttribute('href'))!, this.page.url());
+		const value = target.searchParams.get('size');
+		expect(value).toBeTruthy();
+		await option.click();
+		await this.page.waitForURL((url) => url.searchParams.get('size') === value);
+		await expect(this.categoryFilterItems.activeFilteringHeading).toBeVisible();
+		const remove = region.getByRole('link', {
+			name: UIReference.text.frontend.category.removeSizeM,
+			exact: true,
+		});
+		await expect(remove).toBeVisible();
+		await remove.click();
+		await this.page.waitForURL((url) => !url.searchParams.has('size'));
+		await expect(this.categoryFilterItems.activeFilteringHeading).toBeHidden();
 	}
 
 	/**
